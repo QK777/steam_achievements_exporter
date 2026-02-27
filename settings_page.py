@@ -16,6 +16,7 @@ class SettingsPage(tk.Frame):
         master,
         api_key_var: tk.StringVar,
         steam_id_var: tk.StringVar,
+        steam_path_var: tk.StringVar,
         output_path_var: tk.StringVar,
         save_config_callback=None,
         *args,
@@ -25,6 +26,7 @@ class SettingsPage(tk.Frame):
 
         self.api_key = api_key_var
         self.steam_id = steam_id_var
+        self.steam_path = steam_path_var
         self.output_path = output_path_var
         self.save_config_callback = save_config_callback
 
@@ -143,7 +145,7 @@ class SettingsPage(tk.Frame):
         # 説明
         tk.Label(
             self,
-            text="Steam Web API のキーと SteamID64 を入力し、CSV の保存先を指定してください。　※ 設定は自動保存されます。",
+            text="Steam Web API のキーと SteamID64 を入力し、CSV の保存先を指定してください。\n秘密の実績説明を補完する場合は Steam フォルダも指定できます。　※ 設定は自動保存されます。",
             bg=BG_PANEL,
             fg="#d1d5db",
             wraplength=780,
@@ -173,6 +175,69 @@ class SettingsPage(tk.Frame):
                  width=14, anchor="e").pack(side="left")
 
         self._rounded_entry(row2, self.steam_id, width_ratio=0.6).pack(side="left")
+
+        # --- Steam フォルダ（100%）＋ 📁 アイコン
+        row2b = tk.Frame(form, bg=BG_PANEL)
+        row2b.pack(fill="x", pady=6)
+
+        tk.Label(row2b, text="Steamフォルダ：", bg=BG_PANEL, fg=FG_MAIN,
+                 width=14, anchor="e").pack(side="left")
+
+        steam_entry_frame = tk.Frame(row2b, bg=BG_PANEL)
+        steam_entry_frame.pack(side="left", fill="x", expand=True)
+
+        self._rounded_entry(
+            steam_entry_frame,
+            self.steam_path,
+            width_ratio=1.0,
+            right_icon="📁",
+            right_command=self._browse_steam_path
+        )
+
+        # Steam 状態（stats フォルダ）
+        steam_stat = tk.Frame(form, bg=BG_PANEL)
+        steam_stat.pack(fill="x", pady=(0, 6))
+
+        tk.Label(steam_stat, text="", bg=BG_PANEL, fg=FG_MAIN,
+                 width=14, anchor="e").pack(side="left")
+
+        stat_inner = tk.Frame(steam_stat, bg=BG_PANEL)
+        stat_inner.pack(side="left", fill="x", expand=True)
+
+        self._steam_status_value = tk.Label(
+            stat_inner,
+            text="",
+            bg=BG_PANEL,
+            fg="#9ca3af",
+            font=("NotoSansJP", 9),
+            anchor="w",
+            wraplength=780,
+            justify="left"
+        )
+        self._steam_status_value.pack(side="left", fill="x", expand=True)
+
+        btns = tk.Frame(stat_inner, bg=BG_PANEL)
+        btns.pack(side="right")
+
+        open_link = tk.Label(
+            btns, text="開く",
+            bg=BG_PANEL, fg="#93c5fd",
+            font=("NotoSansJP", 10, "underline"),
+            cursor="hand2"
+        )
+        open_link.pack(side="left", padx=(8, 0))
+        open_link.bind("<Button-1>", lambda e: self._open_steam_folder())
+
+        stats_link = tk.Label(
+            btns, text="stats",
+            bg=BG_PANEL, fg="#93c5fd",
+            font=("NotoSansJP", 10, "underline"),
+            cursor="hand2"
+        )
+        stats_link.pack(side="left", padx=(10, 0))
+        stats_link.bind("<Button-1>", lambda e: self._open_stats_folder())
+
+        self.after(100, self._update_steam_status)
 
         # --- 出力先（100%）＋ 📁 アイコン
         row3 = tk.Frame(form, bg=BG_PANEL)
@@ -292,7 +357,63 @@ class SettingsPage(tk.Frame):
 
         self.api_key.trace_add("write", _on_change)
         self.steam_id.trace_add("write", _on_change)
+        self.steam_path.trace_add("write", _on_change)
         self.output_path.trace_add("write", _on_change)
+
+        # Steam パスの状態表示
+        self.steam_path.trace_add("write", lambda *_: self._update_steam_status())
+
+    # =============================================================================
+    # Steam フォルダ
+    # =============================================================================
+    def _browse_steam_path(self):
+        current = self.steam_path.get().strip()
+        initial_dir = current if current and os.path.isdir(current) else "C:\\"
+        path = filedialog.askdirectory(
+            title="Steam フォルダを選択",
+            initialdir=initial_dir,
+            mustexist=True,
+        )
+        if path:
+            self.steam_path.set(path)
+            if self.save_config_callback:
+                self.save_config_callback()
+
+    def _open_folder(self, path: str):
+        try:
+            if path and os.path.exists(path):
+                os.startfile(path)
+        except Exception:
+            pass
+
+    def _steam_stats_dir(self) -> str:
+        root = self.steam_path.get().strip()
+        if not root:
+            return ""
+        return os.path.join(root, "appcache", "stats")
+
+    def _update_steam_status(self):
+        root = self.steam_path.get().strip()
+        stats = self._steam_stats_dir()
+
+        if not root:
+            msg = "未設定（ローカルスキーマ補完を使う場合は Steam フォルダを指定）"
+        elif not os.path.isdir(root):
+            msg = "Steam フォルダが見つかりません"
+        else:
+            if os.path.isdir(stats):
+                msg = f"OK: {stats}"
+            else:
+                msg = f"Steam は見つかったが stats フォルダがありません: {stats}"
+
+        if hasattr(self, "_steam_status_value"):
+            self._steam_status_value.configure(text=msg)
+
+    def _open_steam_folder(self):
+        self._open_folder(self.steam_path.get().strip())
+
+    def _open_stats_folder(self):
+        self._open_folder(self._steam_stats_dir())
 
     # =============================================================================
     # ファイルダイアログ
